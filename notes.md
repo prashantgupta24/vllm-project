@@ -7,6 +7,7 @@ curl http://localhost:8000/v1/completions \
 "temperature": 0
 }'
 
+
 mkdir cache
 export TRANSFORMERS_CACHE=cache
 export HF_HUB_CACHE=cache
@@ -165,25 +166,123 @@ grpcurl -plaintext -proto proto/generation.proto -d \
 
 ### Mixtral stuff
 
+
+#### Attempt 1
+<!-- export ADAPTER_CACHE=/fmaas-integration-tests-pvc/tuning/output/mixtral-8x7b-v0.1/lora/ -->
+
+export ADAPTER_CACHE=/fmaas-integration-tests-pvc/tuning/output/lora_sukriti_postprocess/
+
+python -m vllm_tgis_adapter --model=/shared_model_storage/transformers_cache/models--mistralai--Mixtral-8x7B-v0.1/snapshots/985aa055896a8f943d4a9f2572e6ea1341823841 --enable-lora
+
+
+
 grpcurl -plaintext -proto proto/generation.proto -d \
   '{
     "model_id": "dummy-model-name",
     "requests": [
       {
-        "text": "Once upon a time,"
+        "text": "@HMRCcustomers No this is my first job"
       }
     ],
     "params": {
       "method": "GREEDY",
       "stopping": {
-        "max_new_tokens": 4
-      },
-      "response": {
-          "generated_tokens": true
-        }
-    }
+        "max_new_tokens": 20
+      }
+    },
+    "adapter_id" : "post-processed-checkpoint-49"
   }' \
   localhost:8033 fmaas.GenerationService/Generate
+  
+
+#### Attempt 2
+
+(needs 2 GPUs)
+
+export ADAPTER_CACHE=/fmaas-integration-tests-pvc/tuning/output/mixtral-8x7b-v0.1/lora
+python3 -m vllm_tgis_adapter --model=mistralai/Mixtral-8x7B-v0.1 --enable-lora
+python3 -m vllm_tgis_adapter --model=mistralai/Mixtral-8x7B-Instruct-v0.1 --enable-lora
+
+grpcurl -plaintext -proto ./proto/generation.proto -d "{\"adapter_id\": \"20240926120057/save_model\",\"params\":{\"method\":\"GREEDY\", \"stopping\": {\"max_new_tokens\": 128}}, \"requests\": [{\"text\":\"### Text: @sho_help @showtime your arrive is terrible streaming is stop and start every couple mins. Get it together it's xmas\n\n### Label:\"}, {\"text\":\"### Text: @FitbitSupport when are you launching new clock faces for Indian market\n\n### Label:\"}]}" localhost:8033 fmaas.GenerationService/Generate
+
+
+grpcurl -plaintext -proto proto/generation.proto -d \
+  '{
+    "model_id": "dummy-model-name",
+    "requests": [
+      {
+        "text": "Text: @sho_help @showtime your arrive is terrible streaming is stop and start every couple mins. Get it together its xmas\n\n### Label:"
+      }
+    ],
+    "params": {
+      "method": "GREEDY",
+      "stopping": {
+        "max_new_tokens": 20
+      }
+    },
+    "adapter_id" : "20240926120057/save_model"
+  }' \
+  localhost:8033 fmaas.GenerationService/Generate
+
+grpcurl -plaintext -d '{
+  "requests": [
+    {
+      "text": "### Text: @sho_help @showtime your arrive is terrible streaming is stop and start every couple mins. Get it together its xmas\\n\\n ### Label:"
+    }
+  ],
+  "adapterId": "twitter-20241002144812-save-model",
+  "params": {
+    "stopping": {
+      "maxNewTokens": 20
+    },
+    "response": {
+      "inputText": true
+    }
+  }
+}' localhost:8033 fmaas.GenerationService.Generate
+
+grpcurl -plaintext -proto proto/generation.proto -d \
+  '{
+    "model_id": "dummy-model-name",
+    "requests": [
+      {
+        "text": "[system] Given a target sentence construct the underlying meaning representation\nof the input sentence as a single function with attributes and attribute\nvalues. This function should describe the target string accurately and the\nfunction must be one of the following ['inform', 'request', 'give_opinion',\n'confirm', 'verify_attribute', 'suggest', 'request_explanation',\n'recommend', 'request_attribute'].\n\nThe attributes must be one of the following:\n['name', 'exp_release_date', 'release_year', 'developer', 'esrb', 'rating',\n'genres', 'player_perspective', 'has_multiplayer', 'platforms',\n'available_on_steam', 'has_linux_release', 'has_mac_release', 'specifier'] [/system] [user] Here is the target sentence:\nBioShock is a good role-playing, action-adventure, shooter that released for PlayStation, Xbox, and PC in 2007. It is available on Steam, and it has a Mac release but not a Linux release. [/user] [assistant]"
+      }
+
+    ],
+    "params": {
+      "stopping": {
+        "max_new_tokens": 256
+      },
+      "sampling": {
+      "temperature": 0
+    }
+    },
+    "adapter_id" : "adapter2/snapshots/9704daa05cc20d35efa73f627c9b4ac9fea507c5"
+  }' \
+  localhost:8033 fmaas.GenerationService/Generate
+
+grpcurl -plaintext -proto proto/generation.proto -d \
+  '{
+    "model_id": "dummy-model-name",
+    "requests": [
+      {
+        "text": "[system] Given a target sentence construct the underlying meaning representation\nof the input sentence as a single function with attributes and attribute\nvalues. This function should describe the target string accurately and the\nfunction must be one of the following ['inform', 'request', 'give_opinion',\n'confirm', 'verify_attribute', 'suggest', 'request_explanation',\n'recommend', 'request_attribute'].\n\nThe attributes must be one of the following:\n['name', 'exp_release_date', 'release_year', 'developer', 'esrb', 'rating',\n'genres', 'player_perspective', 'has_multiplayer', 'platforms',\n'available_on_steam', 'has_linux_release', 'has_mac_release', 'specifier'] [/system] [user] Here is the target sentence:\nBioShock is a good role-playing, action-adventure, shooter that released for PlayStation, Xbox, and PC in 2007. It is available on Steam, and it has a Mac release but not a Linux release. [/user] [assistant]"
+      }
+
+    ],
+    "params": {
+      "stopping": {
+        "max_new_tokens": 256
+      },
+      "sampling": {
+      "temperature": 0
+    }
+    },
+    "adapter_id" : "adapter3/snapshots/8cb2c9c8d64aa82e986fb86ec78e2726152652ad"
+  }' \
+  localhost:8033 fmaas.GenerationService/Generate
+
 ### Qlora
 
 export ADAPTER_CACHE=/fmaas-integration-tests-pvc/tuning/output/llama3-70b/qlora/cc_tone-20240806124230-anhs-qlora/
@@ -195,19 +294,22 @@ grpcurl -plaintext -proto proto/generation.proto -d \
     "model_id": "dummy-model-name",
     "requests": [
       {
-        "text": "Tweet text : @nationalgridus I have no water and the bill is current and paid. Can you do something about this? Label : "
-      },
-      {
-        "text": "Tweet text : @nationalgridus Looks good thanks! Label : "
+        "text": "Once upon a time,"
       }
     ],
     "params": {
       "method": "GREEDY",
       "stopping": {
-        "max_new_tokens": 20
-      }
+        "max_new_tokens": 10
+      },
+        "response": {
+          "input_tokens": true,
+          "token_logprobs": true,
+          "top_n_tokens": 10,
+          "token_ranks": true
+        }
     },
-    "adapter_id" : "checkpoint-1260"
+    "adapter_id" : "granite-34b-qlora/cc_sentiment-20240828100034-qlora/checkpoint-1260"
   }' \
   localhost:8033 fmaas.GenerationService/Generate
 
@@ -219,9 +321,10 @@ import os
 import safetensors.torch
 lora_dir = "/fmaas-integration-tests-pvc/tuning/output/llama3-70b/qlora/cc_tone-20240806124230-anhs-qlora/checkpoint-1260"
 lora_tensor_path = os.path.join(lora_dir, "adapter_model.safetensors")
-with safetensors.safe_open(lora_tensor_path,framework="pt") as f:
-  lora_modules = [lora_module for lora_module in f.keys()]
+f = safetensors.safe_open(lora_tensor_path,framework="pt"):
+lora_modules = [lora_module for lora_module in f.keys()]
 
+f.get_tensor(lora_modules[0]).size()
 
 
 ## Tests
@@ -338,3 +441,67 @@ grpcurl -plaintext -proto proto/generation.proto -H "x-correlation-id: 12345" -d
     }
   }' \
   localhost:8033 fmaas.GenerationService/GenerateStream
+
+
+
+## Misc - lora_mixtral debugging
+
+  ## target modules
+  "target_modules": [
+    "o_proj",
+    "k_proj",
+    "v_proj",
+    "w2",
+    "w1",
+    "gate",
+    "q_proj",
+    "w3"
+  ],
+
+## Tensor names
+'base_model.model.model.layers.0.block_sparse_moe.experts.0.w1.lora_A.weight', 
+'base_model.model.model.layers.0.block_sparse_moe.experts.0.w1.lora_B.weight', 
+'base_model.model.model.layers.0.block_sparse_moe.experts.0.w2.lora_A.weight', 
+'base_model.model.model.layers.0.block_sparse_moe.experts.0.w2.lora_B.weight',
+
+# tensor name
+base_model.model.model.layers.0.block_sparse_moe.experts.0.w1.lora_A.weight
+
+# parse_fine_tuned_lora_name
+# model.layers.0.block_sparse_moe.experts.0.w1
+['model', 'layers', '0', 'block_sparse_moe', 'experts', '0', 'w1']
+
+# expected_lora_modules (last part of parse_fine_tuned_lora_name)
+['q_proj', 'k_proj', 'v_proj', 'o_proj', 'embed_tokens', 'lm_head']
+
+# supported_lora_modules
+['qkv_proj', 'o_proj', 'embed_tokens', 'lm_head']
+
+# packed_modules_mapping
+{'qkv_proj': ['q_proj', 'k_proj', 'v_proj']}
+
+vs
+
+# tensor name
+['base_model', 'model', 'lm_head', 'weight']
+
+# parse_fine_tuned_lora_name
+['model', 'lm_head']
+
+
+## granite-20b-multilingual-base-lora-lm-head
+
+# target_modules
+  "target_modules": [
+    "c_attn",
+    "c_fc",
+    "c_proj",
+    "lm_head"
+  ],
+
+'base_model.model.lm_head.lora_A.weight', 
+'base_model.model.lm_head.lora_B.weight', 
+'base_model.model.transformer.h.0.attn.c_attn.lora_A.weight', 
+'base_model.model.transformer.h.0.attn.c_attn.lora_B.weight', 
+'base_model.model.transformer.h.0.attn.c_proj.lora_A.weight', 
+'base_model.model.transformer.h.0.attn.c_proj.lora_B.weight'
